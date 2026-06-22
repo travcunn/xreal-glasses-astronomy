@@ -1,9 +1,9 @@
 """All user-tunable settings for the sky prototype."""
 
 # Observer location (free-look heading, but location fixes which sky is overhead).
-LATITUDE_DEG = 37.7749       # default: San Francisco
-LONGITUDE_DEG = -122.4194
-ELEVATION_M = 0.0
+LATITUDE_DEG = 47.4484       # Fairwood, WA (King County)
+LONGITUDE_DEG = -122.1573
+ELEVATION_M = 162.0
 
 # Star rendering
 MAG_LIMIT = 6.5              # faintest star magnitude to draw (naked-eye limit)
@@ -31,9 +31,9 @@ VIEW_SMOOTHING_MIN_CUTOFF = 1.0   # Hz
 VIEW_SMOOTHING_BETA = 1.5
 
 # Magnetometer heading anchor
-MAGNETIC_DECLINATION_DEG = 13.0   # fallback if WMM lookup fails (SF ~ +13 E)
+MAGNETIC_DECLINATION_DEG = 15.4   # fallback if WMM lookup fails (Seattle area ~ +15.4 E)
 HEADING_GAIN = 0.02               # how fast the compass pulls yaw toward true north
-IP_GEOLOCATION = True             # auto-detect observer location at startup
+IP_GEOLOCATION = False            # use the explicit LAT/LON above (ip-api is city/ISP-level)
 MAG_CALIBRATION_PATH = "mag_calibration.json"
 
 # Toggles

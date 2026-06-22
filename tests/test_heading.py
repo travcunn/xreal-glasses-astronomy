@@ -1,5 +1,7 @@
 import numpy as np
-from sky.heading import azimuth_of_magnetic_north, slew_angle, compute_yaw_target
+from sky.heading import (
+    azimuth_of_magnetic_north, slew_angle, compute_yaw_target, azimuth_align_delta,
+)
 
 
 def test_azimuth_cardinals():
@@ -30,3 +32,29 @@ def test_yaw_target_puts_true_north_at_zero():
     # Then magnetic north should display at azimuth +10 deg -> yaw_offset target = +10 deg.
     t = compute_yaw_target(np.array([1.0, 0.0, 0.0]), 10.0)
     assert abs(np.degrees(t) - 10.0) < 1e-6
+
+
+def test_align_delta_rotates_gaze_azimuth_onto_target():
+    # Looking North, target (Moon) is due East -> add +90 deg to swing the view east.
+    gaze = np.array([1.0, 0.0, 0.0])
+    target = np.array([0.0, 1.0, 0.0])
+    assert abs(np.degrees(azimuth_align_delta(gaze, target)) - 90.0) < 1e-6
+
+
+def test_align_delta_ignores_altitude():
+    # Only the horizontal (azimuth) component matters; vertical offsets are ignored.
+    gaze = np.array([1.0, 0.0, 0.6])      # looking N, tilted up
+    target = np.array([0.0, 1.0, -0.4])   # E, below horizon
+    assert abs(np.degrees(azimuth_align_delta(gaze, target)) - 90.0) < 1e-6
+
+
+def test_align_delta_takes_short_way_across_seam():
+    # Gaze az ~170 deg, target az ~-170 deg: shortest correction is +20, not -340.
+    gaze = np.array([np.cos(np.radians(170)), np.sin(np.radians(170)), 0.0])
+    target = np.array([np.cos(np.radians(-170)), np.sin(np.radians(-170)), 0.0])
+    assert abs(np.degrees(azimuth_align_delta(gaze, target)) - 20.0) < 1e-6
+
+
+def test_align_delta_zero_when_already_aligned():
+    v = np.array([0.3, -0.7, 0.2])
+    assert abs(azimuth_align_delta(v, v)) < 1e-9

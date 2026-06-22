@@ -95,6 +95,10 @@ socket is reachable.
 |---|---|
 | Mouse drag (dev mode) | Look around |
 | `R` | Re-center on your current gaze: makes wherever you're looking the level, forward view (also auto-runs once at startup, so look ahead while it levels) |
+| `L` | Align heading to the real Moon: look straight at the Moon, press `L`, and the sky's azimuth snaps so the rendered Moon lands on your gaze (turns the magnetometer anchor off) |
+| `M` | Toggle the magnetometer heading anchor (off = free-look) |
+| `F` | Flip azimuth panning direction |
+| `C` | Start/finish magnetometer calibration (rotate the glasses in all directions between presses) |
 | `Esc` / window close | Quit |
 
 ## Configuration

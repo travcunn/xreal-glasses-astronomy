@@ -26,7 +26,7 @@ from sky.coords import (
 from sky.ephemeris import Ephemeris
 from sky.location import resolve_location
 from sky.declination import declination_deg
-from sky.heading import compute_yaw_target, slew_angle
+from sky.heading import compute_yaw_target, slew_angle, azimuth_align_delta
 from imu.magcal import MagCalibration
 from imu.fusion import OrientationSmoother
 from imu.reader import to_body_gyro
@@ -148,6 +148,7 @@ def main():
     view_cal = BASE_VIEW       # gaze calibration: head @ view_cal == BASE_VIEW at neutral
     recenter_request = False   # R sets this; consumed once head is known this frame
     gaze_calibrated = False    # auto-calibrate once after the leveling settle
+    align_moon_request = False  # L sets this; consumed once the Moon's position is known
     start = time.time()
     last = start
     running = True
@@ -180,6 +181,8 @@ def main():
             if event.type == pygame.KEYDOWN and event.key == pygame.K_f:
                 invert_azimuth = not invert_azimuth
                 print(f"azimuth panning inverted: {invert_azimuth}")
+            if event.type == pygame.KEYDOWN and event.key == pygame.K_l:
+                align_moon_request = True   # look at the real Moon, then press L
             if event.type == pygame.MOUSEMOTION and event.buttons[0]:
                 yaw += event.rel[0] * 0.005
                 pitch += event.rel[1] * 0.005
@@ -228,9 +231,11 @@ def main():
         scene.set_camera(cam)
 
         # Rotate the static equatorial frame into the live horizontal frame.
+        # Use the resolved observer location (same as the ephemeris), not the raw
+        # config default, or stars/bodies land at the wrong altitude.
         jd = ts.now().ut1
-        lst = lst_hours(jd, config.LONGITUDE_DEG)
-        rot = equatorial_to_horizontal_matrix(config.LATITUDE_DEG, lst)
+        lst = lst_hours(jd, lon_deg)
+        rot = equatorial_to_horizontal_matrix(lat_deg, lst)
         star_world = star_eq @ rot.T
         scene.load_stars(star_world, star_sizes, star_colors)
 
@@ -248,6 +253,26 @@ def main():
         body_sizes = np.array([28.0 if b.kind in ("sun", "moon") else 12.0 for b in bodies])
         body_colors = np.array([_BODY_COLORS[b.name] for b in bodies], dtype="f4")
         scene.load_bodies(body_world, body_sizes, body_colors)
+
+        # Align heading to the real Moon: rotate the view's azimuth so the rendered
+        # Moon lands where you're looking. Absolute and accurate (no compass error),
+        # so it also turns the magnetometer anchor off. Altitude is left to gravity;
+        # if it's also off after this, that's a location/time issue, not heading.
+        if align_moon_request:
+            align_moon_request = False
+            moon_idx = next((i for i, b in enumerate(bodies) if b.name == "Moon"), None)
+            if moon_idx is not None:
+                gaze = quat_to_matrix(cam) @ np.array([0.0, 0.0, -1.0])
+                moon = body_world[moon_idx]
+                yaw_offset += azimuth_align_delta(gaze, moon)
+                mag_enabled = False
+                gaze_alt = np.degrees(np.arcsin(np.clip(gaze[2], -1, 1)))
+                moon_alt = np.degrees(np.arcsin(np.clip(moon[2], -1, 1)))
+                print(f"aligned heading to Moon (magnetometer OFF). "
+                      f"altitude: gaze {gaze_alt:+.1f} deg vs Moon {moon_alt:+.1f} deg "
+                      f"(large gap => check location/time)")
+            else:
+                print("Moon not available to align to.")
 
         # Labels: bodies + bright stars.
         labels = []

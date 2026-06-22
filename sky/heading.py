@@ -24,6 +24,19 @@ def slew_angle(current_rad: float, target_rad: float, gain: float) -> float:
     return _wrap(current_rad + gain * delta)
 
 
+def azimuth_align_delta(gaze_world: np.ndarray, target_world: np.ndarray) -> float:
+    """Yaw to add to the view (radians, about world up) so the camera's azimuth
+
+    points at `target_world`. `gaze_world` is the current camera-forward direction
+    and `target_world` is a known object's world direction (e.g. the Moon); both in
+    the (North=x, East=y, Up=z) frame. Only azimuth is corrected (altitude is
+    gravity-referenced and stays untouched); the result takes the shortest arc.
+    """
+    gaze_az = np.arctan2(gaze_world[1], gaze_world[0])
+    target_az = np.arctan2(target_world[1], target_world[0])
+    return _wrap(target_az - gaze_az)
+
+
 def compute_yaw_target(mag_world: np.ndarray, declination_deg: float) -> float:
     """Radians to offset the rendered azimuth so true north -> screen az 0.
 
