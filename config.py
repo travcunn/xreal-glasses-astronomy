@@ -10,7 +10,10 @@ MAG_LIMIT = 6.5              # faintest star magnitude to draw (naked-eye limit)
 LABEL_MAG_LIMIT = 1.8        # only label stars at least this bright
 
 # Camera / display
-FOV_DEG = 57.0               # XREAL One Pro field of view (tunable during calibration)
+# XREAL One Pro: 57 deg DIAGONAL FOV (manufacturer spec). The renderer derives the
+# vertical FOV from this and the display aspect, so the on-screen angular scale
+# matches the real optics and the sky stays world-locked when you turn your head.
+FOV_DIAGONAL_DEG = 57.0
 GLASSES_RESOLUTION = (1920, 1080)
 DISPLAY_INDEX = None         # None = auto-detect the 1920x1080 glasses display
 

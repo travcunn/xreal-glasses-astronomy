@@ -13,6 +13,23 @@ from mathlib import quat_conjugate, quat_to_matrix
 from sky.coords import altaz_to_unit
 
 
+def fovy_from_diagonal(diagonal_deg: float, aspect: float) -> float:
+    """Vertical FOV (deg) from a diagonal FOV (deg) for a given width/height aspect.
+
+    Glasses quote a single DIAGONAL FOV (the One Pro's 57 deg). The projection
+    needs the vertical FOV. On the rectilinear image plane the half-extents satisfy
+    tan(d/2)^2 = tan(h/2)^2 + tan(v/2)^2 with tan(h/2) = aspect * tan(v/2), so:
+
+        tan(v/2) = tan(d/2) / sqrt(1 + aspect^2)
+
+    For 57 deg diagonal on 16:9 this gives ~29.8 deg vertical (~50.6 deg horizontal).
+    Matching this to the real optics is what makes the sky hold still: a head turn
+    then sweeps stars across the display by the correct angle.
+    """
+    tan_v = np.tan(np.radians(diagonal_deg) / 2.0) / np.sqrt(1.0 + aspect**2)
+    return float(np.degrees(2.0 * np.arctan(tan_v)))
+
+
 def perspective(fovy_deg: float, aspect: float, near: float, far: float) -> np.ndarray:
     f = 1.0 / np.tan(np.radians(fovy_deg) / 2.0)
     m = np.zeros((4, 4))
@@ -118,7 +135,8 @@ class Scene:
         self.width = width
         self.height = height
         self.aspect = width / height
-        self.proj = perspective(config.FOV_DEG, self.aspect, 0.01, 10.0)
+        fovy = fovy_from_diagonal(config.FOV_DIAGONAL_DEG, self.aspect)
+        self.proj = perspective(fovy, self.aspect, 0.01, 10.0)
         self.view = np.eye(4)
         self.ctx.enable(moderngl.PROGRAM_POINT_SIZE | moderngl.BLEND)
         self.ctx.blend_func = moderngl.SRC_ALPHA, moderngl.ONE_MINUS_SRC_ALPHA

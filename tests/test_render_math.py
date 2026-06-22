@@ -1,8 +1,26 @@
 import numpy as np
 import pytest
 
-from render.scene import perspective, view_from_quat, magnitude_to_size
+from render.scene import perspective, view_from_quat, magnitude_to_size, fovy_from_diagonal
 from mathlib import quat_identity
+
+
+def test_fovy_from_diagonal_one_pro():
+    # XREAL One Pro: 57 deg DIAGONAL on a 16:9 panel -> ~29.8 deg vertical.
+    assert abs(fovy_from_diagonal(57.0, 16 / 9) - 29.81) < 0.1
+
+
+def test_fovy_is_smaller_than_diagonal_on_widescreen():
+    assert fovy_from_diagonal(57.0, 16 / 9) < 57.0
+
+
+def test_fovy_from_diagonal_roundtrips():
+    # Reconstruct the diagonal from the derived vertical + aspect.
+    aspect = 16 / 9
+    fovy = fovy_from_diagonal(57.0, aspect)
+    tan_v = np.tan(np.radians(fovy) / 2.0)
+    diag = np.degrees(2.0 * np.arctan(tan_v * np.sqrt(1.0 + aspect**2)))
+    assert abs(diag - 57.0) < 1e-6
 
 
 def test_perspective_shape_and_clip():
