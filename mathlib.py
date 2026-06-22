@@ -40,6 +40,35 @@ def quat_from_rotvec(v: np.ndarray) -> np.ndarray:
     return np.array([np.cos(half), *(axis * np.sin(half))])
 
 
+def quat_to_rotvec(q: np.ndarray) -> np.ndarray:
+    """Quaternion -> rotation vector (axis * angle), inverse of quat_from_rotvec.
+
+    Returns the shortest-arc rotation (angle in (-pi, pi]) by flipping to the
+    hemisphere with w >= 0, and uses a small-angle approximation near zero where
+    sin(half) -> 0.
+    """
+    q = quat_normalize(q)
+    if q[0] < 0.0:               # shortest arc: q and -q are the same rotation
+        q = -q
+    w = np.clip(q[0], -1.0, 1.0)
+    s = np.sqrt(1.0 - w * w)
+    if s < 1e-8:                 # angle ~ 0: rotvec ~ 2 * vector part
+        return 2.0 * q[1:]
+    angle = 2.0 * np.arccos(w)
+    return q[1:] / s * angle
+
+
+def quat_angle_between(a: np.ndarray, b: np.ndarray) -> float:
+    """Rotation angle (radians, [0, pi]) between two orientations.
+
+    Uses |dot| so the quaternion double-cover (q and -q are the same rotation)
+    does not produce a spurious pi-sized angle.
+    """
+    a = quat_normalize(a)
+    b = quat_normalize(b)
+    return float(2.0 * np.arccos(np.clip(abs(a @ b), 0.0, 1.0)))
+
+
 def quat_right_offset(current: np.ndarray, target: np.ndarray) -> np.ndarray:
     """Offset `o` such that `quat_mul(current, o) == target`.
 

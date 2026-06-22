@@ -21,7 +21,11 @@ ACCEL_GAIN = 0.02            # complementary filter: how hard gravity corrects d
 
 # Head tracking
 INVERT_AZIMUTH = False            # F at runtime flips yaw direction if turning feels reversed
-VIEW_SMOOTHING_TAU = 0.08         # orientation low-pass time constant (s); 0 = off, higher = steadier but more lag
+# View stabilization: One Euro adaptive low-pass on head orientation.
+# Lower MIN_CUTOFF = steadier when still (kills jitter) but more lag; 0 disables.
+# Higher BETA = snaps back faster on intentional head turns (less lag at speed).
+VIEW_SMOOTHING_MIN_CUTOFF = 1.0   # Hz
+VIEW_SMOOTHING_BETA = 1.5
 
 # Magnetometer heading anchor
 MAGNETIC_DECLINATION_DEG = 13.0   # fallback if WMM lookup fails (SF ~ +13 E)

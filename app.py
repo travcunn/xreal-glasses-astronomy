@@ -129,8 +129,10 @@ def main():
         reader.start()
         fusion = ComplementaryFilter()
 
-    # Light low-pass on the view orientation so small head jitter is not jagged.
-    smoother = OrientationSmoother(config.VIEW_SMOOTHING_TAU)
+    # Adaptive low-pass on the view orientation: kills jitter when still, stays
+    # responsive on intentional head turns.
+    smoother = OrientationSmoother(config.VIEW_SMOOTHING_MIN_CUTOFF,
+                                   config.VIEW_SMOOTHING_BETA)
 
     # --- Magnetometer calibration (loaded if present) ---
     mag_cal = (MagCalibration.load(config.MAG_CALIBRATION_PATH)

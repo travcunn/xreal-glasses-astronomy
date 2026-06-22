@@ -5,7 +5,7 @@ import numpy as np
 import config
 from mathlib import (
     quat_identity, quat_mul, quat_normalize, quat_from_rotvec,
-    quat_to_matrix, rotate_vector, quat_slerp,
+    quat_to_matrix, rotate_vector, quat_slerp, quat_conjugate, quat_to_rotvec,
 )
 
 
@@ -37,28 +37,56 @@ class ComplementaryFilter:
         return quat_to_matrix(self.q)
 
 
+def _one_euro_alpha(cutoff: float, dt: float) -> float:
+    """Smoothing factor for a first-order low-pass with the given cutoff (Hz)."""
+    tau = 1.0 / (2.0 * np.pi * cutoff)
+    return 1.0 / (1.0 + tau / dt)
+
+
 class OrientationSmoother:
-    """Low-pass filter on orientation: damps high-frequency head jitter.
+    """One Euro adaptive low-pass on orientation (Casiez et al., CHI 2012).
 
-    Each update slerps the held orientation a fraction of the way toward the new
-    target. The fraction is derived from a time constant `tau` (seconds) so the
-    feel is frame-rate independent: alpha = 1 - exp(-dt / tau). Small tau -> light
-    smoothing with little lag; larger tau -> heavier smoothing, more lag. tau = 0
-    is a pass-through (no smoothing).
+    A fixed low-pass forces a single jitter-vs-lag trade: smooth enough to kill
+    hand/head tremor and real turns lag and "swim." The One Euro filter adapts the
+    cutoff to how fast the signal is actually moving:
 
-    This is a deliberate jitter-vs-latency trade: a longer tau is steadier but
-    lags real head motion, which in a head-locked view reads as the world
-    "swimming." Keep it slight.
+        cutoff = min_cutoff + beta * |angular velocity|
+        out    = slerp(out, target, alpha(cutoff, dt))
+
+    At rest / tiny shakes the angular velocity is ~0, so the cutoff sits at
+    `min_cutoff` (heavy smoothing -> jitter dies). During an intentional turn the
+    velocity is high, the cutoff rises, and lag shrinks (no swimming).
+
+    The speed estimate is the *directional* angular velocity (a vector), low-passed
+    at `d_cutoff`, so back-and-forth jitter cancels instead of reading as fast
+    motion. `min_cutoff <= 0` disables smoothing (pass-through). Tuning: lower
+    `min_cutoff` for more stillness, raise `beta` for more responsiveness in motion.
     """
 
-    def __init__(self, tau: float):
-        self.tau = tau
-        self.q: np.ndarray | None = None
+    def __init__(self, min_cutoff: float, beta: float, d_cutoff: float = 1.0):
+        self.min_cutoff = min_cutoff
+        self.beta = beta
+        self.d_cutoff = d_cutoff
+        self.q: np.ndarray | None = None        # filtered orientation
+        self._prev_raw: np.ndarray | None = None
+        self._omega = np.zeros(3)               # low-passed angular velocity (rad/s)
 
     def update(self, target: np.ndarray, dt: float) -> np.ndarray:
-        if self.q is None or self.tau <= 0.0:   # first sample / disabled: snap to target
-            self.q = quat_normalize(target)
+        target = quat_normalize(target)
+        if self.q is None or self.min_cutoff <= 0.0:   # first sample / disabled
+            self.q = target
+            self._prev_raw = target
+            self._omega = np.zeros(3)
             return self.q
-        alpha = 1.0 - np.exp(-dt / self.tau)
-        self.q = quat_slerp(self.q, target, alpha)
+
+        # Directional angular velocity of the raw signal, low-passed. Using the
+        # rotation-vector delta (not a scalar speed) means symmetric jitter cancels.
+        delta = quat_to_rotvec(quat_mul(quat_conjugate(self._prev_raw), target))
+        omega = delta / dt
+        a_d = _one_euro_alpha(self.d_cutoff, dt)
+        self._omega = a_d * omega + (1.0 - a_d) * self._omega
+        self._prev_raw = target
+
+        cutoff = self.min_cutoff + self.beta * float(np.linalg.norm(self._omega))
+        self.q = quat_slerp(self.q, target, _one_euro_alpha(cutoff, dt))
         return self.q
