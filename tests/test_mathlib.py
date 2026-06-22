@@ -2,6 +2,7 @@ import numpy as np
 from mathlib import (
     quat_identity, quat_mul, quat_normalize, quat_from_rotvec,
     quat_conjugate, quat_to_matrix, rotate_vector, quat_from_matrix,
+    quat_slerp,
 )
 
 
@@ -42,6 +43,37 @@ def test_matrix_quat_roundtrip():
     q2 = quat_from_matrix(m)
     # Quaternions are double-cover; compare via the matrix they produce.
     assert np.allclose(quat_to_matrix(q2), m, atol=1e-6)
+
+
+def test_slerp_endpoints_return_inputs():
+    a = quat_from_rotvec(np.array([0.0, 0.0, 0.0]))
+    b = quat_from_rotvec(np.array([0.0, 0.0, 1.0]))
+    assert np.allclose(quat_to_matrix(quat_slerp(a, b, 0.0)), quat_to_matrix(a), atol=1e-6)
+    assert np.allclose(quat_to_matrix(quat_slerp(a, b, 1.0)), quat_to_matrix(b), atol=1e-6)
+
+
+def test_slerp_midpoint_is_half_the_rotation():
+    a = quat_identity()
+    b = quat_from_rotvec(np.array([0.0, 0.0, np.pi / 2]))  # 90 deg about z
+    mid = quat_slerp(a, b, 0.5)                            # should be 45 deg about z
+    out = rotate_vector(mid, np.array([1.0, 0.0, 0.0]))
+    assert np.allclose(out, [np.cos(np.pi / 4), np.sin(np.pi / 4), 0.0], atol=1e-6)
+
+
+def test_slerp_takes_shortest_arc_across_double_cover():
+    # b and -b are the same rotation; slerp must pick the short way regardless of sign.
+    a = quat_identity()
+    b = quat_from_rotvec(np.array([0.0, 0.0, np.radians(20)]))
+    mid_pos = quat_slerp(a, b, 0.5)
+    mid_neg = quat_slerp(a, -b, 0.5)
+    assert np.allclose(quat_to_matrix(mid_pos), quat_to_matrix(mid_neg), atol=1e-6)
+
+
+def test_slerp_near_identical_inputs_stable():
+    a = quat_from_rotvec(np.array([0.0, 0.0, 0.10]))
+    b = quat_from_rotvec(np.array([0.0, 0.0, 0.10 + 1e-9]))
+    out = quat_slerp(a, b, 0.5)
+    assert np.isclose(np.linalg.norm(out), 1.0, atol=1e-6)  # no NaN from sin(theta)~0
 
 
 def test_yaw_reflection_inverts_yaw_keeps_pitch():

@@ -25,6 +25,7 @@ from sky.location import resolve_location
 from sky.declination import declination_deg
 from sky.heading import compute_yaw_target, slew_angle
 from imu.magcal import MagCalibration
+from imu.fusion import OrientationSmoother
 from render.scene import Scene, magnitude_to_size
 from render.labels import make_label_texture
 
@@ -124,6 +125,9 @@ def main():
         reader.start()
         fusion = ComplementaryFilter()
 
+    # Light low-pass on the view orientation so small head jitter is not jagged.
+    smoother = OrientationSmoother(config.VIEW_SMOOTHING_TAU)
+
     # --- Magnetometer calibration (loaded if present) ---
     mag_cal = (MagCalibration.load(config.MAG_CALIBRATION_PATH)
                if os.path.exists(config.MAG_CALIBRATION_PATH) else MagCalibration())
@@ -179,6 +183,10 @@ def main():
         else:
             head = quat_mul(quat_from_rotvec(np.array([0.0, 0.0, yaw])),
                             quat_from_rotvec(np.array([pitch, 0.0, 0.0])))
+
+        # Smooth the orientation that drives the camera (damps high-frequency
+        # jitter; intentional head turns still pass through).
+        head = smoother.update(head, dt)
 
         # Flip yaw sense so the sky is world-locked the natural way.
         if invert_azimuth:

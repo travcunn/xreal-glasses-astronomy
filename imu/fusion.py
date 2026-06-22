@@ -5,7 +5,7 @@ import numpy as np
 import config
 from mathlib import (
     quat_identity, quat_mul, quat_normalize, quat_from_rotvec,
-    quat_to_matrix, rotate_vector,
+    quat_to_matrix, rotate_vector, quat_slerp,
 )
 
 
@@ -35,3 +35,30 @@ class ComplementaryFilter:
 
     def matrix(self) -> np.ndarray:
         return quat_to_matrix(self.q)
+
+
+class OrientationSmoother:
+    """Low-pass filter on orientation: damps high-frequency head jitter.
+
+    Each update slerps the held orientation a fraction of the way toward the new
+    target. The fraction is derived from a time constant `tau` (seconds) so the
+    feel is frame-rate independent: alpha = 1 - exp(-dt / tau). Small tau -> light
+    smoothing with little lag; larger tau -> heavier smoothing, more lag. tau = 0
+    is a pass-through (no smoothing).
+
+    This is a deliberate jitter-vs-latency trade: a longer tau is steadier but
+    lags real head motion, which in a head-locked view reads as the world
+    "swimming." Keep it slight.
+    """
+
+    def __init__(self, tau: float):
+        self.tau = tau
+        self.q: np.ndarray | None = None
+
+    def update(self, target: np.ndarray, dt: float) -> np.ndarray:
+        if self.q is None or self.tau <= 0.0:   # first sample / disabled: snap to target
+            self.q = quat_normalize(target)
+            return self.q
+        alpha = 1.0 - np.exp(-dt / self.tau)
+        self.q = quat_slerp(self.q, target, alpha)
+        return self.q

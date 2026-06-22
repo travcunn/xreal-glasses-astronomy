@@ -40,6 +40,28 @@ def quat_from_rotvec(v: np.ndarray) -> np.ndarray:
     return np.array([np.cos(half), *(axis * np.sin(half))])
 
 
+def quat_slerp(a: np.ndarray, b: np.ndarray, t: float) -> np.ndarray:
+    """Spherical linear interpolation from `a` to `b` by fraction `t` in [0, 1].
+
+    Takes the shortest arc (handles quaternion double-cover) and falls back to
+    normalized linear interpolation when the inputs are nearly parallel, where
+    sin(theta) -> 0 would otherwise blow up.
+    """
+    a = quat_normalize(a)
+    b = quat_normalize(b)
+    dot = float(a @ b)
+    if dot < 0.0:           # a and -b are the same rotation; flip to the short way
+        b = -b
+        dot = -dot
+    if dot > 0.9995:        # nearly identical -> lerp + renormalize
+        return quat_normalize(a + t * (b - a))
+    theta = np.arccos(np.clip(dot, -1.0, 1.0))
+    sin_theta = np.sin(theta)
+    wa = np.sin((1.0 - t) * theta) / sin_theta
+    wb = np.sin(t * theta) / sin_theta
+    return quat_normalize(wa * a + wb * b)
+
+
 def quat_to_matrix(q: np.ndarray) -> np.ndarray:
     w, x, y, z = quat_normalize(q)
     return np.array([
