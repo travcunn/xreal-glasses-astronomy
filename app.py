@@ -15,7 +15,7 @@ import moderngl
 from skyfield.api import load as sf_load
 
 import config
-from mathlib import quat_mul, quat_from_rotvec, quat_to_matrix, rotate_vector
+from mathlib import quat_mul, quat_from_rotvec, quat_to_matrix, rotate_vector, quat_from_matrix
 from sky.catalog import load_stars, load_constellation_lines, STAR_NAMES
 from sky.coords import (
     radec_to_equatorial_unit, equatorial_to_horizontal_matrix, lst_hours,
@@ -38,6 +38,15 @@ _BODY_COLORS = {
 # (The exact head->camera axis mapping is calibrated on the glasses; flip/swap
 # these axes if motion feels mirrored.)
 BASE_VIEW = quat_from_rotvec(np.array([np.pi / 2, 0.0, 0.0]))
+
+# Reflect head orientation across the North-Up plane: inverts yaw (azimuth
+# panning) while preserving pitch/roll and keeping a proper rotation (no image
+# mirror). Makes the sky world-locked the right way: turn head -> reveal new sky.
+_YAW_FLIP = np.diag([1.0, -1.0, 1.0])
+
+
+def reflect_yaw(q: np.ndarray) -> np.ndarray:
+    return quat_from_matrix(_YAW_FLIP @ quat_to_matrix(q) @ _YAW_FLIP)
 
 
 def _pick_display(use_glasses: bool):
@@ -125,6 +134,8 @@ def main():
     yaw = pitch = 0.0          # dev-mode mouse look
     yaw_offset = 0.0           # re-center offset applied about world up
     current_az = 0.0           # current view azimuth (for the re-center key)
+    mag_enabled = True         # M toggles the magnetometer heading anchor
+    invert_azimuth = config.INVERT_AZIMUTH  # F toggles yaw panning direction
     start = time.time()
     last = start
     running = True
@@ -151,6 +162,12 @@ def main():
                     mag_cal.save(config.MAG_CALIBRATION_PATH)
                     calibrating = False
                     print(f"calibration done: offset={mag_cal.offset}")
+            if event.type == pygame.KEYDOWN and event.key == pygame.K_m:
+                mag_enabled = not mag_enabled
+                print(f"magnetometer anchor: {'ON' if mag_enabled else 'OFF (free-look)'}")
+            if event.type == pygame.KEYDOWN and event.key == pygame.K_f:
+                invert_azimuth = not invert_azimuth
+                print(f"azimuth panning inverted: {invert_azimuth}")
             if event.type == pygame.MOUSEMOTION and event.buttons[0]:
                 yaw += event.rel[0] * 0.005
                 pitch += event.rel[1] * 0.005
@@ -163,18 +180,23 @@ def main():
             head = quat_mul(quat_from_rotvec(np.array([0.0, 0.0, yaw])),
                             quat_from_rotvec(np.array([pitch, 0.0, 0.0])))
 
+        # Flip yaw sense so the sky is world-locked the natural way.
+        if invert_azimuth:
+            head = reflect_yaw(head)
+
         # Magnetometer heading anchor (Approach A): slew yaw_offset toward true north.
         mag = reader.latest_mag if reader is not None else None
         if mag is not None:
             if calibrating:
                 mag_cal.collect(mag)
-            else:
+            elif mag_enabled:
                 mag_world = rotate_vector(head, mag_cal.apply(mag))
                 target = compute_yaw_target(mag_world, declination)
                 yaw_offset = slew_angle(yaw_offset, target, config.HEADING_GAIN)
 
-        # Tilt the neutral view to the horizon, then apply the re-center offset.
-        cam_pre = quat_mul(BASE_VIEW, head)
+        # Mount the camera on the head (right-multiply) so head motion maps to a
+        # rigid, world-locked view; then apply the re-center offset about world up.
+        cam_pre = quat_mul(head, BASE_VIEW)
         fwd = quat_to_matrix(cam_pre) @ np.array([0.0, 0.0, -1.0])
         current_az = float(np.arctan2(fwd[1], fwd[0]))  # N=x, E=y
         cam = quat_mul(quat_from_rotvec(np.array([0.0, 0.0, yaw_offset])), cam_pre)

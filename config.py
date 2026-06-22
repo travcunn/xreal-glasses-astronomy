@@ -19,6 +19,9 @@ IMU_HOST = "169.254.2.1"
 IMU_PORT = 52998
 ACCEL_GAIN = 0.02            # complementary filter: how hard gravity corrects drift
 
+# Head tracking
+INVERT_AZIMUTH = False            # F at runtime flips yaw direction if turning feels reversed
+
 # Magnetometer heading anchor
 MAGNETIC_DECLINATION_DEG = 13.0   # fallback if WMM lookup fails (SF ~ +13 E)
 HEADING_GAIN = 0.02               # how fast the compass pulls yaw toward true north
