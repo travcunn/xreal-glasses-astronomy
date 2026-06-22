@@ -94,7 +94,7 @@ socket is reachable.
 | Input | Action |
 |---|---|
 | Mouse drag (dev mode) | Look around |
-| `R` | Re-center: snap the current heading to azimuth zero (resets yaw drift) |
+| `R` | Re-center on your current gaze: makes wherever you're looking the level, forward view (also auto-runs once at startup, so look ahead while it levels) |
 | `Esc` / window close | Quit |
 
 ## Configuration

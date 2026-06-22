@@ -2,7 +2,7 @@ import numpy as np
 from mathlib import (
     quat_identity, quat_mul, quat_normalize, quat_from_rotvec,
     quat_conjugate, quat_to_matrix, rotate_vector, quat_from_matrix,
-    quat_slerp,
+    quat_slerp, quat_right_offset,
 )
 
 
@@ -74,6 +74,21 @@ def test_slerp_near_identical_inputs_stable():
     b = quat_from_rotvec(np.array([0.0, 0.0, 0.10 + 1e-9]))
     out = quat_slerp(a, b, 0.5)
     assert np.isclose(np.linalg.norm(out), 1.0, atol=1e-6)  # no NaN from sin(theta)~0
+
+
+def test_right_offset_maps_current_onto_target():
+    # The calibration invariant: current @ offset == target, for any orientation.
+    current = quat_normalize(quat_from_rotvec(np.array([0.4, -1.1, 0.7])))
+    target = quat_from_rotvec(np.array([np.pi / 2, 0.0, 0.0]))  # BASE_VIEW-like
+    offset = quat_right_offset(current, target)
+    composed = quat_mul(current, offset)
+    assert np.allclose(quat_to_matrix(composed), quat_to_matrix(target), atol=1e-6)
+
+
+def test_right_offset_of_self_is_identity_rotation():
+    q = quat_normalize(quat_from_rotvec(np.array([0.2, 0.9, -0.5])))
+    offset = quat_right_offset(q, q)
+    assert np.allclose(quat_to_matrix(offset), np.eye(3), atol=1e-6)
 
 
 def test_yaw_reflection_inverts_yaw_keeps_pitch():

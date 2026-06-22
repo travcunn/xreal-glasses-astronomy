@@ -15,7 +15,10 @@ import moderngl
 from skyfield.api import load as sf_load
 
 import config
-from mathlib import quat_mul, quat_from_rotvec, quat_to_matrix, rotate_vector, quat_from_matrix
+from mathlib import (
+    quat_mul, quat_from_rotvec, quat_to_matrix, rotate_vector, quat_from_matrix,
+    quat_right_offset,
+)
 from sky.catalog import load_stars, load_constellation_lines, STAR_NAMES
 from sky.coords import (
     radec_to_equatorial_unit, equatorial_to_horizontal_matrix, lst_hours,
@@ -134,13 +137,15 @@ def main():
                if os.path.exists(config.MAG_CALIBRATION_PATH) else MagCalibration())
     calibrating = False
 
-    leveling_tex = make_label_texture(ctx, "leveling...", size=36)
+    leveling_tex = make_label_texture(ctx, "look forward...", size=36)
 
     yaw = pitch = 0.0          # dev-mode mouse look
     yaw_offset = 0.0           # re-center offset applied about world up
-    current_az = 0.0           # current view azimuth (for the re-center key)
     mag_enabled = True         # M toggles the magnetometer heading anchor
     invert_azimuth = config.INVERT_AZIMUTH  # F toggles yaw panning direction
+    view_cal = BASE_VIEW       # gaze calibration: head @ view_cal == BASE_VIEW at neutral
+    recenter_request = False   # R sets this; consumed once head is known this frame
+    gaze_calibrated = False    # auto-calibrate once after the leveling settle
     start = time.time()
     last = start
     running = True
@@ -156,7 +161,7 @@ def main():
             ):
                 running = False
             if event.type == pygame.KEYDOWN and event.key == pygame.K_r:
-                yaw_offset -= current_az   # snap current heading to zero
+                recenter_request = True   # recenter on current gaze (level + forward)
             if event.type == pygame.KEYDOWN and event.key == pygame.K_c:
                 if not calibrating:
                     mag_cal = MagCalibration()
@@ -203,11 +208,20 @@ def main():
                 target = compute_yaw_target(mag_world, declination)
                 yaw_offset = slew_angle(yaw_offset, target, config.HEADING_GAIN)
 
+        # Calibrate "forward" to the current gaze: capture this head pose as the
+        # neutral so that head @ view_cal == BASE_VIEW (level, looking ahead). Runs
+        # once automatically after the leveling settle, and again whenever R is
+        # pressed (look where you want centered, then press R). Pitch/roll leveling
+        # lives here; azimuth stays owned by yaw_offset (mag / re-center).
+        if recenter_request or (use_glasses and not gaze_calibrated and now - start >= 1.0):
+            view_cal = quat_right_offset(head, BASE_VIEW)
+            yaw_offset = 0.0
+            recenter_request = False
+            gaze_calibrated = True
+
         # Mount the camera on the head (right-multiply) so head motion maps to a
         # rigid, world-locked view; then apply the re-center offset about world up.
-        cam_pre = quat_mul(head, BASE_VIEW)
-        fwd = quat_to_matrix(cam_pre) @ np.array([0.0, 0.0, -1.0])
-        current_az = float(np.arctan2(fwd[1], fwd[0]))  # N=x, E=y
+        cam_pre = quat_mul(head, view_cal)
         cam = quat_mul(quat_from_rotvec(np.array([0.0, 0.0, yaw_offset])), cam_pre)
         scene.set_camera(cam)
 

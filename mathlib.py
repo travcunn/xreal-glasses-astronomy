@@ -40,6 +40,16 @@ def quat_from_rotvec(v: np.ndarray) -> np.ndarray:
     return np.array([np.cos(half), *(axis * np.sin(half))])
 
 
+def quat_right_offset(current: np.ndarray, target: np.ndarray) -> np.ndarray:
+    """Offset `o` such that `quat_mul(current, o) == target`.
+
+    For unit quaternions, o = current^-1 * target = conj(current) * target. Used
+    to calibrate a neutral pose: capture the live `current` head orientation and
+    get the body-frame offset that makes it read as the canonical `target` view.
+    """
+    return quat_normalize(quat_mul(quat_conjugate(quat_normalize(current)), target))
+
+
 def quat_slerp(a: np.ndarray, b: np.ndarray, t: float) -> np.ndarray:
     """Spherical linear interpolation from `a` to `b` by fraction `t` in [0, 1].
 
