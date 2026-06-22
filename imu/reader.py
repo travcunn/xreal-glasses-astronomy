@@ -24,6 +24,21 @@ REPORT_IMU = 0x0B
 REPORT_MAG = 0x04
 
 
+# Hardware axis convention, measured on the worn glasses (diagnose_imu_axes.py).
+# The gyroscope reports its X axis inverted relative to the accelerometer's
+# right-handed body frame: the raw (yaw, pitch, roll) gyro axes form a LEFT-handed
+# triple. Integrating that mirrors the orientation, so the sky tracked the head
+# instead of staying world-locked. Negating gyro X puts both sensors in one
+# right-handed frame. (Flipping Y or Z also fixes handedness but would break the
+# yaw axis's agreement with gravity, so X is the only consistent choice.)
+GYRO_AXIS_SIGN = np.array([-1.0, 1.0, 1.0])
+
+
+def to_body_gyro(raw_gyro: np.ndarray) -> np.ndarray:
+    """Raw decoded gyro -> right-handed glasses body frame (see GYRO_AXIS_SIGN)."""
+    return raw_gyro * GYRO_AXIS_SIGN
+
+
 @dataclass
 class IMUSample:
     gx: float

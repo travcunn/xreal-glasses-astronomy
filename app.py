@@ -26,6 +26,7 @@ from sky.declination import declination_deg
 from sky.heading import compute_yaw_target, slew_angle
 from imu.magcal import MagCalibration
 from imu.fusion import OrientationSmoother
+from imu.reader import to_body_gyro
 from render.scene import Scene, magnitude_to_size
 from render.labels import make_label_texture
 
@@ -179,7 +180,7 @@ def main():
         # Head orientation (gravity-referenced world frame).
         if reader is not None and reader.latest is not None:
             s = reader.latest
-            head = fusion.update(s.gyro, s.accel, dt)
+            head = fusion.update(to_body_gyro(s.gyro), s.accel, dt)
         else:
             head = quat_mul(quat_from_rotvec(np.array([0.0, 0.0, yaw])),
                             quat_from_rotvec(np.array([pitch, 0.0, 0.0])))
