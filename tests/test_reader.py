@@ -36,6 +36,36 @@ def test_split_records_leftover_is_partial_tail():
     assert len(leftover) < RECORD_LEN
 
 
+import numpy as np
+from imu.reader import report_type, decode_mag, REPORT_IMU, REPORT_MAG
+
+
+def test_report_types_present_in_capture():
+    buf = FIXTURE.read_bytes()
+    records, _ = split_records(buf)
+    types = [report_type(r) for r in records]
+    assert types.count(REPORT_IMU) > 2000      # ~3000 IMU
+    assert types.count(REPORT_MAG) > 800        # ~1200 mag
+
+
+def test_decode_mag_reads_earth_field():
+    buf = FIXTURE.read_bytes()
+    records, _ = split_records(buf)
+    mags = [decode_mag(r) for r in records]
+    mags = [m for m in mags if m is not None]
+    assert 800 < len(mags) < 1500
+    mag_norms = [float(np.linalg.norm(m)) for m in mags]
+    mean = sum(mag_norms) / len(mag_norms)
+    assert 30.0 < mean < 65.0      # Earth's field magnitude in microtesla
+
+
+def test_decode_mag_returns_none_for_imu_record():
+    buf = FIXTURE.read_bytes()
+    records, _ = split_records(buf)
+    imu_rec = next(r for r in records if report_type(r) == REPORT_IMU)
+    assert decode_mag(imu_rec) is None
+
+
 import time as _time
 from imu.reader import IMUReader
 
@@ -70,5 +100,19 @@ def test_reader_publishes_latest_from_fake_socket():
         assert reader.latest is not None
         s = reader.latest
         assert 9.0 <= math.sqrt(s.ax**2 + s.ay**2 + s.az**2) <= 10.5
+    finally:
+        reader.stop()
+
+
+def test_reader_publishes_latest_mag_from_fake_socket():
+    data = FIXTURE.read_bytes()
+    reader = IMUReader(connect_fn=lambda: _FakeSocket(data))
+    reader.start()
+    try:
+        deadline = _time.time() + 2.0
+        while reader.latest_mag is None and _time.time() < deadline:
+            _time.sleep(0.01)
+        assert reader.latest_mag is not None
+        assert 30.0 < float(np.linalg.norm(reader.latest_mag)) < 65.0
     finally:
         reader.stop()

@@ -16,9 +16,12 @@ import numpy as np
 import config
 
 HEADER = bytes.fromhex("283600000080")
-SENSOR = bytes.fromhex("00401f000040")
 RECORD_LEN = 134
-PAYLOAD_OFFSET = 34
+PAYLOAD_OFFSET = 34       # gyro xyz, accel xyz (IMU records)
+MAG_OFFSET = 58           # mx, my, mz (magnetometer records)
+REPORT_TYPE_OFFSET = 30   # little-endian u32: 0x0B IMU, 0x04 magnetometer
+REPORT_IMU = 0x0B
+REPORT_MAG = 0x04
 
 
 @dataclass
@@ -53,14 +56,30 @@ def split_records(buf: bytes) -> tuple[list[bytes], bytes]:
         i = h + RECORD_LEN
 
 
+def report_type(rec: bytes) -> int:
+    if len(rec) < REPORT_TYPE_OFFSET + 4:
+        return -1
+    return struct.unpack_from("<I", rec, REPORT_TYPE_OFFSET)[0]
+
+
 def decode_record(rec: bytes) -> IMUSample | None:
-    if len(rec) < RECORD_LEN or SENSOR not in rec[70:90]:
+    if len(rec) < RECORD_LEN or report_type(rec) != REPORT_IMU:
         return None
     try:
         gx, gy, gz, ax, ay, az = struct.unpack_from("<6f", rec, PAYLOAD_OFFSET)
     except struct.error:
         return None
     return IMUSample(gx, gy, gz, ax, ay, az)
+
+
+def decode_mag(rec: bytes) -> np.ndarray | None:
+    if len(rec) < RECORD_LEN or report_type(rec) != REPORT_MAG:
+        return None
+    try:
+        mx, my, mz = struct.unpack_from("<3f", rec, MAG_OFFSET)
+    except struct.error:
+        return None
+    return np.array([mx, my, mz])
 
 
 class IMUReader:
@@ -70,6 +89,7 @@ class IMUReader:
         self._port = port
         self._connect_fn = connect_fn or self._default_connect
         self._latest: IMUSample | None = None
+        self._latest_mag: np.ndarray | None = None
         self._lock = threading.Lock()
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
@@ -85,6 +105,11 @@ class IMUReader:
     def latest(self) -> IMUSample | None:
         with self._lock:
             return self._latest
+
+    @property
+    def latest_mag(self) -> np.ndarray | None:
+        with self._lock:
+            return self._latest_mag
 
     def start(self):
         self._stop.clear()
@@ -114,6 +139,11 @@ class IMUReader:
                     if sample is not None:
                         with self._lock:
                             self._latest = sample
+                        continue
+                    mag = decode_mag(rec)
+                    if mag is not None:
+                        with self._lock:
+                            self._latest_mag = mag
             except (OSError, socket.timeout):
                 if sock is not None:
                     try:

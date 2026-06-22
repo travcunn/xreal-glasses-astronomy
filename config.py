@@ -19,6 +19,12 @@ IMU_HOST = "169.254.2.1"
 IMU_PORT = 52998
 ACCEL_GAIN = 0.02            # complementary filter: how hard gravity corrects drift
 
+# Magnetometer heading anchor
+MAGNETIC_DECLINATION_DEG = 13.0   # fallback if WMM lookup fails (SF ~ +13 E)
+HEADING_GAIN = 0.02               # how fast the compass pulls yaw toward true north
+IP_GEOLOCATION = True             # auto-detect observer location at startup
+MAG_CALIBRATION_PATH = "mag_calibration.json"
+
 # Toggles
 SHOW_MILKY_WAY = False
 SHOW_HORIZON = True

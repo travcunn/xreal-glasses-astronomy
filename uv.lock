@@ -244,6 +244,15 @@ wheels = [
 ]
 
 [[package]]
+name = "pygeomag"
+version = "1.1.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/f4/05/0479687afaf337f7e549b8d576a53de65c9b491ddd8e1e1a254f97c7aff8/pygeomag-1.1.0.tar.gz", hash = "sha256:c38943c43f7e0e771e25f101b2b94077f00307436760bbf5e79b84c3a41569d7", size = 237585, upload-time = "2024-12-21T17:42:03.245Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/65/af/4416ce7b7f2b924d32ae8834d6b76bde02980fca7619fbb26d171140c5b8/pygeomag-1.1.0-py3-none-any.whl", hash = "sha256:b08fc5de7ca545721e511f62a342d415a4d76e695fec28ef9ef255e994e6727b", size = 249073, upload-time = "2024-12-21T17:42:01.772Z" },
+]
+
+[[package]]
 name = "pygments"
 version = "2.20.0"
 source = { registry = "https://pypi.org/simple" }
@@ -345,6 +354,7 @@ dependencies = [
     { name = "numpy" },
     { name = "pandas" },
     { name = "pygame" },
+    { name = "pygeomag" },
     { name = "skyfield" },
 ]
 
@@ -359,6 +369,7 @@ requires-dist = [
     { name = "numpy", specifier = ">=2.5.0" },
     { name = "pandas", specifier = ">=3.0.3" },
     { name = "pygame", specifier = ">=2.6.1" },
+    { name = "pygeomag", specifier = ">=1.1.0" },
     { name = "skyfield", specifier = ">=1.54" },
 ]
 

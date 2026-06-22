@@ -5,6 +5,7 @@ Usage:
     uv run python app.py --glasses  # fullscreen on the glasses, head-tracked
 """
 
+import os
 import sys
 import time
 
@@ -14,12 +15,16 @@ import moderngl
 from skyfield.api import load as sf_load
 
 import config
-from mathlib import quat_mul, quat_from_rotvec, quat_to_matrix
+from mathlib import quat_mul, quat_from_rotvec, quat_to_matrix, rotate_vector
 from sky.catalog import load_stars, load_constellation_lines, STAR_NAMES
 from sky.coords import (
     radec_to_equatorial_unit, equatorial_to_horizontal_matrix, lst_hours,
 )
 from sky.ephemeris import Ephemeris
+from sky.location import resolve_location
+from sky.declination import declination_deg
+from sky.heading import compute_yaw_target, slew_angle
+from imu.magcal import MagCalibration
 from render.scene import Scene, magnitude_to_size
 from render.labels import make_label_texture
 
@@ -59,6 +64,15 @@ def main():
     scene = Scene(ctx, *size)
     scene.load_horizon()
 
+    # --- Observer location + magnetic declination ---
+    if config.IP_GEOLOCATION:
+        lat_deg, lon_deg = resolve_location(config.LATITUDE_DEG, config.LONGITUDE_DEG)
+    else:
+        lat_deg, lon_deg = config.LATITUDE_DEG, config.LONGITUDE_DEG
+    print(f"observer location: {lat_deg:.3f}, {lon_deg:.3f}")
+    declination = declination_deg(lat_deg, lon_deg, 2026.5)
+    print(f"magnetic declination: {declination:+.1f} deg")
+
     # --- Star catalog (static equatorial unit vectors) ---
     stars = load_stars(config.MAG_LIMIT)
     star_eq = np.array([
@@ -85,7 +99,7 @@ def main():
             star_label_tex[stars.hip_index[hip]] = (name, make_label_texture(ctx, name))
 
     # --- Ephemeris (Sun/Moon/planets) ---
-    ephem = Ephemeris(config.LATITUDE_DEG, config.LONGITUDE_DEG, config.ELEVATION_M)
+    ephem = Ephemeris(lat_deg, lon_deg, config.ELEVATION_M)
     body_label_tex = {name: make_label_texture(ctx, name) for name in _BODY_COLORS}
     bodies = ephem.bodies()
     last_ephem = time.time()
@@ -100,6 +114,11 @@ def main():
         reader = IMUReader()
         reader.start()
         fusion = ComplementaryFilter()
+
+    # --- Magnetometer calibration (loaded if present) ---
+    mag_cal = (MagCalibration.load(config.MAG_CALIBRATION_PATH)
+               if os.path.exists(config.MAG_CALIBRATION_PATH) else MagCalibration())
+    calibrating = False
 
     leveling_tex = make_label_texture(ctx, "leveling...", size=36)
 
@@ -122,6 +141,16 @@ def main():
                 running = False
             if event.type == pygame.KEYDOWN and event.key == pygame.K_r:
                 yaw_offset -= current_az   # snap current heading to zero
+            if event.type == pygame.KEYDOWN and event.key == pygame.K_c:
+                if not calibrating:
+                    mag_cal = MagCalibration()
+                    calibrating = True
+                    print("calibrating: rotate the glasses in all directions...")
+                else:
+                    mag_cal.finish()
+                    mag_cal.save(config.MAG_CALIBRATION_PATH)
+                    calibrating = False
+                    print(f"calibration done: offset={mag_cal.offset}")
             if event.type == pygame.MOUSEMOTION and event.buttons[0]:
                 yaw += event.rel[0] * 0.005
                 pitch += event.rel[1] * 0.005
@@ -133,6 +162,16 @@ def main():
         else:
             head = quat_mul(quat_from_rotvec(np.array([0.0, 0.0, yaw])),
                             quat_from_rotvec(np.array([pitch, 0.0, 0.0])))
+
+        # Magnetometer heading anchor (Approach A): slew yaw_offset toward true north.
+        mag = reader.latest_mag if reader is not None else None
+        if mag is not None:
+            if calibrating:
+                mag_cal.collect(mag)
+            else:
+                mag_world = rotate_vector(head, mag_cal.apply(mag))
+                target = compute_yaw_target(mag_world, declination)
+                yaw_offset = slew_angle(yaw_offset, target, config.HEADING_GAIN)
 
         # Tilt the neutral view to the horizon, then apply the re-center offset.
         cam_pre = quat_mul(BASE_VIEW, head)

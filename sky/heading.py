@@ -1,0 +1,35 @@
+"""Heading helpers for magnetometer-based real-sky alignment (pure)."""
+
+import numpy as np
+
+
+def azimuth_of_magnetic_north(mag_world: np.ndarray) -> float:
+    """World-frame azimuth (deg, North-through-East, [0,360)) of the mag vector.
+
+    `mag_world` must already be rotated into the gravity-referenced world frame
+    (X=North, Y=East, Z=Up), which makes this tilt-compensated.
+    """
+    north, east = float(mag_world[0]), float(mag_world[1])
+    return float(np.degrees(np.arctan2(east, north)) % 360.0)
+
+
+def _wrap(angle_rad: float) -> float:
+    """Wrap to (-pi, pi]."""
+    return (angle_rad + np.pi) % (2 * np.pi) - np.pi
+
+
+def slew_angle(current_rad: float, target_rad: float, gain: float) -> float:
+    """Move `current` toward `target` by `gain` along the shortest path."""
+    delta = _wrap(target_rad - current_rad)
+    return _wrap(current_rad + gain * delta)
+
+
+def compute_yaw_target(mag_world: np.ndarray, declination_deg: float) -> float:
+    """Radians to offset the rendered azimuth so true north -> screen az 0.
+
+    Magnetic north sits at true azimuth = declination (east positive); its
+    measured world-frame azimuth is `azimuth_of_magnetic_north`. To display it at
+    azimuth `declination`, the offset must be (declination - measured).
+    """
+    mag_az = azimuth_of_magnetic_north(mag_world)
+    return _wrap(np.radians(declination_deg) - np.radians(mag_az))
